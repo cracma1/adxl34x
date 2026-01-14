@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 # MPU-6050 I2C accelerometer reader for Raspberry Pi (minimal deps: python3-smbus)
-import time
-from smbus import SMBus
+import socket
+PC_IP = "192.168.10.20" #<--replace with your ubuntu PC IP
+PORT = 5005
+
+import time, datetime
+from smbus2 import SMBus
  
 # Registers (MPU-6000/6050)
 WHO_AM_I     = 0x75
@@ -14,6 +18,11 @@ ACCEL_XOUT_H = 0x3B  # XH, XL, YH, YL, ZH, ZL
 LSB_PER_G = 16384.0     # +/-2g scale
 G_TO_MS2  = 9.80665
  
+def send_udp(text):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.sendto(text.encode(), (PC_IP, PORT))
+    s.close()
+
 def r8(bus, addr, reg):
     return bus.read_byte_data(addr, reg)
  
@@ -58,8 +67,12 @@ def main():
     try:
         while True:
             ax, ay, az = read_accel(bus, addr)
-            print("X=%+0.3f  Y=%+0.3f  Z=%+0.3f m/s^2" % (ax, ay, az))
-            time.sleep(0.1)
+            ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds")
+            # print("ts={} X=%+0.3f  Y=%+0.3f  Z=%+0.3f m/s^2".format(ts, ax, ay, az))
+            line = "ts={} X={:.3f} Y={:.3f} Z={:.3f}".format(ts, ax, ay, az)
+            time.sleep(0.5)
+            print(line)
+            send_udp(line)
     except KeyboardInterrupt:
         pass
     finally:
