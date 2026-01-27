@@ -65,6 +65,7 @@ def main():
             # Receive data with microsecond timestamp
             data, client_addr = sock.recvfrom(BUFFER_SIZE)
             recv_time = time.time()  # Timestamp in seconds with microsecond precision
+
             
             packet_count += 1
             
@@ -100,13 +101,18 @@ def main():
     finally:
         sock.close()
         log_writer.writerow([])
-        log_writer.writerow(['STAT', 'packets_processed', packet_count])
+        log_writer.writerow(["STATISTICS"])
+        log_writer.writerow(["=" * 70])
+        log_writer.writerow([f"Packets processed: {packet_count}"])
         if processing_times:
-            log_writer.writerow(['STAT', 'proc_min_us', f"{min(processing_times):.2f}"])
-            log_writer.writerow(['STAT', 'proc_max_us', f"{max(processing_times):.2f}"])
-            log_writer.writerow(['STAT', 'proc_mean_us', f"{sum(processing_times)/len(processing_times):.2f}"])
+            log_writer.writerow([""])
+            log_writer.writerow(["Processing Time in microseconds:"])
+            log_writer.writerow([f"  Minimum:   {min(processing_times):10.2f} µs"])
+            log_writer.writerow([f"  Maximum:   {max(processing_times):10.2f} µs"])
+            log_writer.writerow([f"  Mean:      {sum(processing_times)/len(processing_times):10.2f} µs"])
         else:
-            log_writer.writerow(['STAT', 'processing', 'no_packets'])
+            log_writer.writerow([""])
+            log_writer.writerow(["No packets processed"])
         log_file.close()
 
 if __name__ == "__main__":

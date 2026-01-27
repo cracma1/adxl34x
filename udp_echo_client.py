@@ -77,28 +77,36 @@ class UDPEchoClient:
         }
 
         self.log_writer.writerow([])
-        self.log_writer.writerow(['STAT', 'sent', stats_row['sent']])
-        self.log_writer.writerow(['STAT', 'received', stats_row['received']])
-        self.log_writer.writerow(['STAT', 'loss_rate_percent', stats_row['loss_rate_percent']])
+        self.log_writer.writerow(["STATISTICS"])
+        self.log_writer.writerow(["=" * 70])
+        self.log_writer.writerow([f"Packets sent:     {self.sent_count}"])
+        self.log_writer.writerow([f"Packets received: {self.received_count}"])
+        if loss_rate is not None:
+            self.log_writer.writerow([f"Packet loss:      {loss_rate:.2f}%"])
 
         if self.rtts:
-            self.log_writer.writerow(['STAT', 'rtt_min_us', f"{min(self.rtts):.2f}"])
-            self.log_writer.writerow(['STAT', 'rtt_max_us', f"{max(self.rtts):.2f}"])
-            self.log_writer.writerow(['STAT', 'rtt_mean_us', f"{statistics.mean(self.rtts):.2f}"])
-            self.log_writer.writerow(['STAT', 'rtt_median_us', f"{statistics.median(self.rtts):.2f}"])
+            self.log_writer.writerow([""])
+            self.log_writer.writerow(["Round-Trip Time (RTT) in microseconds:"])
+            self.log_writer.writerow([f"  Minimum:   {min(self.rtts):10.2f} µs"])
+            self.log_writer.writerow([f"  Maximum:   {max(self.rtts):10.2f} µs"])
+            self.log_writer.writerow([f"  Mean:      {statistics.mean(self.rtts):10.2f} µs"])
+            self.log_writer.writerow([f"  Median:    {statistics.median(self.rtts):10.2f} µs"])
 
             if len(self.rtts) > 1:
-                self.log_writer.writerow(['STAT', 'rtt_stddev_us', f"{statistics.stdev(self.rtts):.2f}"])
+                self.log_writer.writerow([f"  Std Dev:   {statistics.stdev(self.rtts):10.2f} µs"])
 
             sorted_rtts = sorted(self.rtts)
             p50 = sorted_rtts[int(len(sorted_rtts) * 0.50)]
             p95 = sorted_rtts[int(len(sorted_rtts) * 0.95)]
             p99 = sorted_rtts[int(len(sorted_rtts) * 0.99)]
-            self.log_writer.writerow(['STAT', 'rtt_p50_us', f"{p50:.2f}"])
-            self.log_writer.writerow(['STAT', 'rtt_p95_us', f"{p95:.2f}"])
-            self.log_writer.writerow(['STAT', 'rtt_p99_us', f"{p99:.2f}"])
+
+            self.log_writer.writerow([""])
+            self.log_writer.writerow([f"  50th percentile: {p50:10.2f} µs"])
+            self.log_writer.writerow([f"  95th percentile: {p95:10.2f} µs"])
+            self.log_writer.writerow([f"  99th percentile: {p99:10.2f} µs"])
         else:
-            self.log_writer.writerow(['STAT', 'rtt', 'no_successful_round_trips'])
+            self.log_writer.writerow([""])
+            self.log_writer.writerow(["No successful round-trips recorded"])
 
         self.log_file.flush()
 
