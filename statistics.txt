@@ -1,0 +1,16 @@
+STATISTICS
+======================================================================
+Packets sent:     500
+Packets received: 500
+Packet loss:      0.00%
+
+Round-Trip Time (RTT) in microseconds:
+  Minimum:       514.75 µs
+  Maximum:      2508.64 µs
+  Mean:          667.06 µs
+  Median:        616.07 µs
+  Std Dev:       214.46 µs
+
+  50th percentile:     616.07 µs
+  95th percentile:     859.26 µs
+  99th percentile:    1826.29 µs
