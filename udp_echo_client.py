@@ -63,6 +63,45 @@ class UDPEchoClient:
             self.log_file = None
             self.log_writer = None
 
+    def _log_statistics(self):
+        if not self.log_writer:
+            return
+        loss_rate = None
+        if self.sent_count > 0:
+            loss_rate = ((self.sent_count - self.received_count) / self.sent_count) * 100
+
+        stats_row = {
+            'sent': self.sent_count,
+            'received': self.received_count,
+            'loss_rate_percent': f"{loss_rate:.2f}" if loss_rate is not None else ''
+        }
+
+        self.log_writer.writerow([])
+        self.log_writer.writerow(['STAT', 'sent', stats_row['sent']])
+        self.log_writer.writerow(['STAT', 'received', stats_row['received']])
+        self.log_writer.writerow(['STAT', 'loss_rate_percent', stats_row['loss_rate_percent']])
+
+        if self.rtts:
+            self.log_writer.writerow(['STAT', 'rtt_min_us', f"{min(self.rtts):.2f}"])
+            self.log_writer.writerow(['STAT', 'rtt_max_us', f"{max(self.rtts):.2f}"])
+            self.log_writer.writerow(['STAT', 'rtt_mean_us', f"{statistics.mean(self.rtts):.2f}"])
+            self.log_writer.writerow(['STAT', 'rtt_median_us', f"{statistics.median(self.rtts):.2f}"])
+
+            if len(self.rtts) > 1:
+                self.log_writer.writerow(['STAT', 'rtt_stddev_us', f"{statistics.stdev(self.rtts):.2f}"])
+
+            sorted_rtts = sorted(self.rtts)
+            p50 = sorted_rtts[int(len(sorted_rtts) * 0.50)]
+            p95 = sorted_rtts[int(len(sorted_rtts) * 0.95)]
+            p99 = sorted_rtts[int(len(sorted_rtts) * 0.99)]
+            self.log_writer.writerow(['STAT', 'rtt_p50_us', f"{p50:.2f}"])
+            self.log_writer.writerow(['STAT', 'rtt_p95_us', f"{p95:.2f}"])
+            self.log_writer.writerow(['STAT', 'rtt_p99_us', f"{p99:.2f}"])
+        else:
+            self.log_writer.writerow(['STAT', 'rtt', 'no_successful_round_trips'])
+
+        self.log_file.flush()
+
     def _log_row(self, sequence, status, send_time=None, recv_time=None,
                  rtt_us=None, packet_size=None, addr=None, error=None):
         if not self.log_writer:
@@ -163,6 +202,7 @@ class UDPEchoClient:
         finally:
             self.print_statistics()
             self.sock.close()
+            self._log_statistics()
             self._close_log()
     
     def print_statistics(self):

@@ -44,6 +44,7 @@ def main():
         sys.exit(1)
     
     packet_count = 0
+    processing_times = []
     log_file = open(log_path, 'w', newline='')
     log_writer = csv.writer(log_file)
     log_writer.writerow([
@@ -73,6 +74,7 @@ def main():
             
             # Calculate processing time in microseconds
             processing_time_us = (send_time - recv_time) * 1_000_000
+            processing_times.append(processing_time_us)
             
             # Display information
             print(f"[{packet_count:06d}] From {client_addr[0]}:{client_addr[1]} | "
@@ -97,6 +99,14 @@ def main():
         print(f"Total packets processed: {packet_count}")
     finally:
         sock.close()
+        log_writer.writerow([])
+        log_writer.writerow(['STAT', 'packets_processed', packet_count])
+        if processing_times:
+            log_writer.writerow(['STAT', 'proc_min_us', f"{min(processing_times):.2f}"])
+            log_writer.writerow(['STAT', 'proc_max_us', f"{max(processing_times):.2f}"])
+            log_writer.writerow(['STAT', 'proc_mean_us', f"{sum(processing_times)/len(processing_times):.2f}"])
+        else:
+            log_writer.writerow(['STAT', 'processing', 'no_packets'])
         log_file.close()
 
 if __name__ == "__main__":
