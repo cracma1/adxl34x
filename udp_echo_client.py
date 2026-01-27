@@ -10,6 +10,8 @@ import struct
 import statistics
 import sys
 import argparse
+import csv
+from datetime import datetime
 
 # Default configuration
 DEFAULT_SERVER_IP = "192.168.1.100"  # Change to your Raspberry Pi IP
@@ -19,7 +21,7 @@ DEFAULT_COUNT = 100
 DEFAULT_INTERVAL = 0.01  # 10ms between packets
 
 class UDPEchoClient:
-    def __init__(self, server_ip, server_port, packet_size=64):
+    def __init__(self, server_ip, server_port, packet_size=64, log_path=None):
         self.server_ip = server_ip
         self.server_port = server_port
         self.packet_size = packet_size
@@ -30,6 +32,59 @@ class UDPEchoClient:
         self.rtts = []  # Store round-trip times in microseconds
         self.sent_count = 0
         self.received_count = 0
+
+        self.log_path = log_path
+        self.log_file = None
+        self.log_writer = None
+
+    def _init_log(self):
+        if not self.log_path:
+            return
+        self.log_file = open(self.log_path, 'w', newline='')
+        self.log_writer = csv.writer(self.log_file)
+        self.log_writer.writerow([
+            'sequence',
+            'status',
+            'send_time_epoch',
+            'recv_time_epoch',
+            'send_time_iso',
+            'recv_time_iso',
+            'rtt_us',
+            'packet_size_bytes',
+            'from_ip',
+            'from_port',
+            'error'
+        ])
+        self.log_file.flush()
+
+    def _close_log(self):
+        if self.log_file:
+            self.log_file.close()
+            self.log_file = None
+            self.log_writer = None
+
+    def _log_row(self, sequence, status, send_time=None, recv_time=None,
+                 rtt_us=None, packet_size=None, addr=None, error=None):
+        if not self.log_writer:
+            return
+        send_iso = datetime.fromtimestamp(send_time).isoformat() if send_time else ''
+        recv_iso = datetime.fromtimestamp(recv_time).isoformat() if recv_time else ''
+        from_ip = addr[0] if addr else ''
+        from_port = addr[1] if addr else ''
+        self.log_writer.writerow([
+            sequence,
+            status,
+            f"{send_time:.9f}" if send_time else '',
+            f"{recv_time:.9f}" if recv_time else '',
+            send_iso,
+            recv_iso,
+            f"{rtt_us:.2f}" if rtt_us is not None else '',
+            packet_size if packet_size is not None else '',
+            from_ip,
+            from_port,
+            error or ''
+        ])
+        self.log_file.flush()
         
     def send_packet(self, sequence):
         """Send a packet and measure RTT"""
@@ -60,14 +115,26 @@ class UDPEchoClient:
             print(f"[{sequence:06d}] RTT: {rtt_us:8.2f} µs | "
                   f"Size: {len(data):5d} bytes | "
                   f"From: {addr[0]}:{addr[1]}")
+
+            self._log_row(
+                sequence=sequence,
+                status='ok',
+                send_time=send_time,
+                recv_time=recv_time,
+                rtt_us=rtt_us,
+                packet_size=len(data),
+                addr=addr
+            )
             
             return rtt_us
             
         except socket.timeout:
             print(f"[{sequence:06d}] Timeout - no response from server")
+            self._log_row(sequence=sequence, status='timeout', error='timeout')
             return None
         except Exception as e:
             print(f"[{sequence:06d}] Error: {e}")
+            self._log_row(sequence=sequence, status='error', error=str(e))
             return None
     
     def run(self, count=100, interval=0.01):
@@ -77,7 +144,11 @@ class UDPEchoClient:
         print(f"Packet size: {self.packet_size} bytes")
         print(f"Count: {count} packets")
         print(f"Interval: {interval*1000:.1f} ms")
+        if self.log_path:
+            print(f"Log file: {self.log_path}")
         print("-" * 70)
+
+        self._init_log()
         
         try:
             for seq in range(1, count + 1):
@@ -92,6 +163,7 @@ class UDPEchoClient:
         finally:
             self.print_statistics()
             self.sock.close()
+            self._close_log()
     
     def print_statistics(self):
         """Print summary statistics"""
@@ -139,6 +211,8 @@ def main():
                         help=f'Packet size in bytes (default: {DEFAULT_PACKET_SIZE})')
     parser.add_argument('-i', '--interval', type=float, default=DEFAULT_INTERVAL,
                         help=f'Interval between packets in seconds (default: {DEFAULT_INTERVAL})')
+    parser.add_argument('--log', type=str, default=None,
+                        help='Path to CSV log file (default: auto-generated)')
     
     args = parser.parse_args()
     
@@ -146,9 +220,14 @@ def main():
     if args.size < 12:
         print("Error: Packet size must be at least 12 bytes")
         sys.exit(1)
+
+    log_path = args.log
+    if not log_path:
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_path = f"udp_echo_client_{ts}.csv"
     
     # Create and run client
-    client = UDPEchoClient(args.server, args.port, args.size)
+    client = UDPEchoClient(args.server, args.port, args.size, log_path=log_path)
     client.run(args.count, args.interval)
 
 if __name__ == "__main__":
