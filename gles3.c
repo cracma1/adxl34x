@@ -3,6 +3,7 @@
 #include <wayland-egl.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#include "xdg-shell.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,8 @@ static struct wl_compositor   *g_compositor   = NULL;
 static struct wl_shell        *g_shell        = NULL;
 static struct wl_surface      *g_surface      = NULL;
 static struct wl_shell_surface *g_shell_surface = NULL;
+static struct xdg_surface *xdg_surface = NULL;
+static struct xdg_toplevel *xdg_toplevel = NULL;
 static struct wl_egl_window   *g_egl_window   = NULL;
 
 static EGLDisplay g_egl_display = EGL_NO_DISPLAY;
@@ -24,8 +27,8 @@ static EGLConfig  g_egl_config;
 static EGLContext g_egl_context = EGL_NO_CONTEXT;
 static EGLSurface g_egl_surface = EGL_NO_SURFACE;
 
-static int g_width = 2000;
-static int g_height = 1000;
+static int g_width = 800;
+static int g_height = 600;
 static int g_running = 1;
 
 static void handle_sigint(int sig) {
@@ -34,6 +37,17 @@ static void handle_sigint(int sig) {
 }
 
 /* ---------- Wayland globals ---------- */
+static void handle_ping(void *data,
+                        struct xdg_wm_base *wm_base,
+                        uint32_t serial) {
+    xdg_wm_base_pong(wm_base, serial);
+}
+
+static const struct xdg_wm_base_listener wm_base_listener = {
+    .ping = handle_ping,
+};
+
+struct xdg_wm_base *xdg_wm_base;
 
 static void registry_global(void *data,
                             struct wl_registry *registry,
@@ -44,11 +58,17 @@ static void registry_global(void *data,
     (void)data;
     (void)version;
 
+//puts(interface);
     if (strcmp(interface, "wl_compositor") == 0) {
         g_compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 1);
     } else if (strcmp(interface, "wl_shell") == 0) {
         g_shell = wl_registry_bind(registry, name, &wl_shell_interface, 1);
+    } else if (strcmp(interface, "xdg_wm_base") == 0) {
+	    xdg_wm_base = wl_registry_bind(registry, name,
+			    &xdg_wm_base_interface, 1);
+	    xdg_wm_base_add_listener(xdg_wm_base, &wm_base_listener, NULL);
     }
+
 }
 
 static void registry_global_remove(void *data,
@@ -260,6 +280,20 @@ GLuint create_program(const char *vs_src, const char *fs_src)
 
 #define CHECK_GL(x) if (glGetError() != GL_NO_ERROR) { fprintf(stderr, "failed %s: %d\n", #x, glGetError()); abort(); }
 
+static void xdg_surface_handle_configure(
+    void *data,
+    struct xdg_surface *surface,
+    uint32_t serial)
+{
+    xdg_surface_ack_configure(surface, serial);
+    // resize buffers or redraw here
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+    .configure = xdg_surface_handle_configure,
+};
+
+
 int main(void) {
     signal(SIGINT, handle_sigint);
 
@@ -271,17 +305,31 @@ int main(void) {
     wl_registry_add_listener(g_registry, &g_registry_listener, NULL);
     //wl_display_roundtrip(g_display);
     wl_display_dispatch(g_display);
+printf("%p %p\n", g_compositor, g_shell);
 
-    if (!g_compositor || !g_shell) die("missing compositor or shell");
+    if (!g_compositor || !1) die("missing compositor or shell");
 
     g_surface = wl_compositor_create_surface(g_compositor);
     if (!g_surface) die("wl_compositor_create_surface failed");
 
+#if 0
     g_shell_surface = wl_shell_get_shell_surface(g_shell, g_surface);
     if (!g_shell_surface) die("wl_shell_get_shell_surface failed");
     wl_shell_surface_add_listener(g_shell_surface, &g_shell_surface_listener, NULL);
     wl_shell_surface_set_toplevel(g_shell_surface);
     wl_shell_surface_set_title(g_shell_surface, "GLES3 Cube (Wayland)");
+#endif
+
+xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, g_surface);
+xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
+
+xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+//xdg_toplevel_add_listener(xdg_toplevel, &toplevel_listener, NULL);
+
+xdg_toplevel_set_title(xdg_toplevel, "GLES3 cuve");
+
+wl_surface_commit(g_surface);
+
 
     g_egl_window = wl_egl_window_create(g_surface, g_width, g_height);
     if (!g_egl_window) die("wl_egl_window_create failed");
@@ -381,7 +429,7 @@ int main(void) {
 	"{\n"
 	"	FragColor = texture(screenTexture, TexCoords);\n"
 	"	float average = (FragColor.r + FragColor.g + FragColor.b) / 3.0;\n"
-	//"       if (average < 0.000001) discard;\n"
+	"       if (average < 0.000001) discard;\n"
     	"	FragColor = vec4(average, average, average, 1.0);\n"
 	"}";
 
@@ -469,11 +517,12 @@ int main(void) {
     struct timespec start_ts;
     clock_gettime(CLOCK_MONOTONIC, &start_ts);
 
-    struct framebuffer full_scene = {g_width, g_height};
+    struct framebuffer full_scene = {2*g_width, 2*g_height};
     create_framebuffer(&full_scene);
 
     struct framebuffer backlight = {36, 22};
     create_framebuffer(&backlight);
+    glDisable(GL_BLEND);
 
     while (g_running) {
         while (wl_display_dispatch_pending(g_display) != -1) {
@@ -508,11 +557,11 @@ int main(void) {
         glBindVertexArray(0);
 
 	// draw backlight from full scene
-#define GL_CONSERVATIVE_RASTERIZATION_NV  0x9346
-	//glEnable(GL_CONSERVATIVE_RASTERIZATION_NV);
-	//CHECK_GL(GL_CONSERVATIVE_RASTERIZATION_NV);
+#define GL_CONSERVATIVE_RASTERIZATION_INTEL  0x83FE
+	//glEnable(GL_CONSERVATIVE_RASTERIZATION_INTEL);
+	//CHECK_GL(GL_CONSERVATIVE_RASTERIZATION_INTEL);
 	glBindFramebuffer(GL_FRAMEBUFFER, backlight.id);
-        glViewport(-2, -2, backlight.width+4, backlight.height+4);
+        glViewport(0, 0, backlight.width, backlight.height);
 	glClearColor(0, 0, 0, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -522,6 +571,8 @@ int main(void) {
 	glBindTexture(GL_TEXTURE_2D, full_scene.texture);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArray(0);
+
+	//glDisable(GL_CONSERVATIVE_RASTERIZATION_INTEL);
 
 	// draw display from full scene
 	glBindFramebuffer(GL_FRAMEBUFFER, 0); // back to default
@@ -542,6 +593,7 @@ int main(void) {
 
 	glBindTexture(GL_TEXTURE_2D, full_scene.texture);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glDisable(GL_BLEND);
 #endif
         glBindVertexArray(0);
 	//usleep(16000);
@@ -575,4 +627,3 @@ int main(void) {
 
     return 0;
 }
-
